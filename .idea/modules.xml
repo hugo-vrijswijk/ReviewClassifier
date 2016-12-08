@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/reviewclassifier.iml" filepath="$PROJECT_DIR$/.idea/modules/reviewclassifier.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/reviewclassifier-build.iml" filepath="$PROJECT_DIR$/.idea/modules/reviewclassifier-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/classifier.iml" filepath="$PROJECT_DIR$/.idea/modules/classifier.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/classifier-build.iml" filepath="$PROJECT_DIR$/.idea/modules/classifier-build.iml" />
     </modules>
   </component>
 </project>
