@@ -4,7 +4,7 @@ import org.apache.lucene.util.Version
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Row}
 import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, MulticlassClassificationEvaluator}
-import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, IDF}
+import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, IDF, Tokenizer}
 import org.apache.spark.mllib.classification.{NaiveBayes, NaiveBayesModel}
 import org.apache.spark.mllib.linalg.{SparseVector, Vector, Vectors}
 import org.apache.spark.mllib.regression.LabeledPoint
@@ -12,9 +12,9 @@ import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types._
 import org.apache.spark.sql._
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 
 import scala.io.StdIn
-
 import scala.collection.mutable
 
 /**
@@ -29,7 +29,20 @@ object ReviewTokenizer {
     .getOrCreate()
   import spark.implicits._
 
-  def parseAll(rows: Dataset[Row]): Dataset[Row] = rows.map(parse)
+  def parseAll(rows: Dataset[Row]): Dataset[Row] = {
+
+    val tokenizedDs = new Tokenizer()
+    .setInputCol("review")
+      .setOutputCol("words")
+      .transform(rows).select("id", "words", "sentiment")
+
+    tokenizedDs.withColumn("sentimentTmp", tokenizedDs.col("sentiment").cast(DoubleType))
+      .drop("sentiment")
+      .withColumnRenamed("sentimentTmp", "sentiment")
+      .withColumn("wordsTmp", tokenizedDs.col("words").cast(DataTypes.createArrayType(StringType)))
+      .drop("words")
+      .withColumnRenamed("wordsTmp", "words")
+  }
 
   def parse(row: Row): Row = {
     val id = row.getAs[String]("id")
