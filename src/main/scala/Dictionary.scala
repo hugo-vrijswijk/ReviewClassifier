@@ -22,10 +22,10 @@ class Dictionary(dict: Seq[String]) extends Serializable {
 
   def tfIdfs(terms: Seq[String], idfs: Map[String, Double]) = {
     val filteredTerms = terms.filter(idfs contains)
-    (filteredTerms.groupBy(identity).map {
+    filteredTerms.groupBy(identity).map {
       case (term, instances) =>
         (indexOf(term), (instances.size.toDouble / filteredTerms.size.toDouble) * idfs(term))
-    }).toSeq.sortBy(_._1) // sort by termId
+    }.toSeq.sortBy(_._1) // sort by termId
   }
 
   def vectorize(tfIdfs: Iterable[(Int, Double)]) = {

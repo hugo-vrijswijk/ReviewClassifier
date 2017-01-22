@@ -1,3 +1,4 @@
+import org.apache.spark.ml.feature.Tokenizer
 import org.apache.spark.mllib.classification.NaiveBayesModel
 import org.apache.spark.sql.SparkSession
 
@@ -21,9 +22,9 @@ object NaiveBayes extends App {
     .option("header", true)
     .load("C:/Users/hugod/OneDrive/School/Jaar 3/Data Analysis and Data Mining/datasets/Kaggle/labeledTrainData.tsv")
 
-  val rdd = rows.select("review", "sentiment").rdd
-
   val naiveBayesAndDictionaries = createNaiveBayesModel()
+
+  console()
 
   def console() = {
     println("Enter 'q' to quit\n" + "Type a review, or CSV::filepath to read a CSV and classify the reviews in it")
@@ -32,8 +33,8 @@ object NaiveBayes extends App {
     while ( {
       consoleReader.readLine("Input> ") match {
         case s if s == "q" => false
-        case file if file.startsWith("csv::") => classifyCSV(file)
         case review if review.nonEmpty => classifyReview(review)
+        case file if file.startsWith("csv::") => classifyCSV(file.replace("csv::", ""))
         case _ => true
       }
     }) {}
@@ -45,24 +46,28 @@ object NaiveBayes extends App {
 
   def classifyCSV(directory: String) = ???
 
-  def createNaiveBayesModel(): NaiveBayesAndDictionaries = {
+  def createNaiveBayesModel() = {
     // Read CSV
     val rows = spark.read.format("com.databricks.spark.csv")
       .option("delimiter", "\t")
       .option("quote", "\"")
       .option("header", true)
       .load("C:/Users/hugod/OneDrive/School/Jaar 3/Data Analysis and Data Mining/datasets/Kaggle/labeledTrainData.tsv")
+      .rdd
 
-    val reviewsRdd = rows.rdd
-
-    // Create dictionary term => id
-    // And id => term
-    val terms = reviewsRdd
+    // Tokenize all reviews and neatly wrap them in a Review object
+    val tokenizedReviews = ReviewTokenizer.parseAll(rows)
+    val bayes = new NaiveBayesModel()
+    // All words used in all reviews
+    val terms = tokenizedReviews.flatMap(_.terms).distinct().collect().sortBy(identity)
+    val termsDictionary = new Dictionary(terms)
+    //    val termDict = new Dictionary(terms)
 
   }
 }
 
-case class NaiveBayesAndDictionaries(model: NaiveBayesModel,
-                                     termDictionary: Dictionary,
-                                     labelDictionary: Dictionary,
-                                     idfs: Map[String, Double])
+//
+//case class NaiveBayesAndDictionaries(model: NaiveBayesModel,
+//                                     termDictionary: Dictionary,
+//                                     labelDictionary: Dictionary,
+//                                     idfs: Map[String, Double])

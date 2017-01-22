@@ -27,7 +27,7 @@ object ReviewTokenizer {
 
     val tokenizedText = mutable.ArrayBuffer.empty[String]
 
-    while(tokenStream.incrementToken()) {
+    while (tokenStream.incrementToken()) {
       tokenizedText += term.toString
     }
 
