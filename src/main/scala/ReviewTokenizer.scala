@@ -2,7 +2,18 @@ import org.apache.lucene.analysis.en.EnglishAnalyzer
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
 import org.apache.lucene.util.Version
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.{Dataset, Row}
+import org.apache.spark.ml.evaluation.{BinaryClassificationEvaluator, MulticlassClassificationEvaluator}
+import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, IDF}
+import org.apache.spark.mllib.classification.{NaiveBayes, NaiveBayesModel}
+import org.apache.spark.mllib.linalg.{SparseVector, Vector, Vectors}
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.types._
+import org.apache.spark.sql._
+
+import scala.io.StdIn
 
 import scala.collection.mutable
 
@@ -11,16 +22,28 @@ import scala.collection.mutable
   */
 object ReviewTokenizer {
   val LuceneVersion = Version.LATEST
+  val spark = SparkSession
+    .builder()
+    .appName("Classifier")
+    .master("local[4]")
+    .getOrCreate()
+  import spark.implicits._
 
-  def parseAll(rows: RDD[Row]): RDD[Review] = rows.map(parse)
+  def parseAll(rows: Dataset[Row]): Dataset[Row] = rows.map(parse)
 
-  def parse(row: Row): Review = {
+  def parse(row: Row): Row = {
     val id = row.getAs[String]("id")
     val reviewText = row.getAs[String]("review")
     val sentiment = extractSentiment(row)
 
+    val tokenizedText = tokenizeText(reviewText)
+
+    Row(id, tokenizedText, sentiment)
+  }
+
+  def tokenizeText(text: String): Seq[String] = {
     val analyzer = new EnglishAnalyzer()
-    val tokenStream = analyzer.tokenStream("contents", reviewText)
+    val tokenStream = analyzer.tokenStream("contents", text)
 
     val term = tokenStream.addAttribute(classOf[CharTermAttribute])
     tokenStream.reset()
@@ -33,22 +56,12 @@ object ReviewTokenizer {
 
     tokenStream.close()
     tokenStream.end()
-
-    Review(id, tokenizedText, actualSentiment = sentiment)
+    tokenizedText
   }
 
-  def extractSentiment(row: Row): Option[Boolean] = {
-    try {
-      Option(intToBool(row.getAs[String]("sentiment")))
-    } catch {
-      case _: UnsupportedOperationException | _: IllegalArgumentException => None
-    }
-  }
-
-  def intToBool(num: String): Boolean = num match {
-    case "1" => true
-    case _ => false
+  def extractSentiment(row: Row): Double = {
+    row.getAs[String]("sentiment").toDouble
   }
 }
 
-case class Review(docId: String, terms: Seq[String], actualSentiment: Option[Boolean] = None, predictedSentiment: Option[Boolean] = None)
+case class Review(id: String, words: Seq[String], sentiment: Double)
