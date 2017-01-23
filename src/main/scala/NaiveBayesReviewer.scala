@@ -52,12 +52,13 @@ object NaiveBayesReviewer extends App {
   }
 
   def vectorizeReview(bayesAndVectorizerModel: BayesAndVectorizerModel, review: Seq[String]): Double = {
-    val dataset = spark.createDataset(Seq(review))
+    val dataset = spark.createDataset(Seq(review)).withColumnRenamed("value", "words")
 
-    val transformedDf = bayesAndVectorizerModel.hashingTF.setInputCol("value").transform(dataset)
+    val hashingTF = bayesAndVectorizerModel.hashingTF
+    val bayesModel = bayesAndVectorizerModel.bayesModel
 
-    val newVector = bayesAndVectorizerModel.bayesModel.setFeaturesCol("features").setPredictionCol("predictionCol").transform(transformedDf)
-    newVector.head().getAs[Double]("predictionCol")
+    val result = idfDataset(dataset, hashingTF)
+    bayesModel.transform(result).head().getAs[Double]("predictedSentiment")
   }
 
   def testAccuracy(bayesAndVectorizerModel: BayesAndVectorizerModel): Unit = {
@@ -73,7 +74,6 @@ object NaiveBayesReviewer extends App {
     val predictedDataset = bayesModel
       .setFeaturesCol("features")
       .setPredictionCol("predictedSentiment")
-      .setRawPredictionCol("confidence")
       .transform(vectorizedData)
 
     val evaluator = new MulticlassClassificationEvaluator()
@@ -131,7 +131,7 @@ object NaiveBayesReviewer extends App {
     val beforeTrainingModel = System.currentTimeMillis()
 
     val naiveBayesModel = new NaiveBayes()
-      .setSmoothing(0.9)
+      .setSmoothing(0.6)
       .fit(vectorizedData.select("sentiment", "features").withColumnRenamed("sentiment", "label"))
 
     logActivityTime("Training model", beforeTrainingModel)
@@ -139,14 +139,14 @@ object NaiveBayesReviewer extends App {
     BayesAndVectorizerModel(naiveBayesModel, hashingTF, testData)
   }
 
-  def idfDataset(vectorizedData: Dataset[Review], hashingVectorizer: HashingTF): Dataset[_] = {
-    val featurizedData = hashingVectorizer.transform(vectorizedData)
+  def idfDataset(tokenizedData: Dataset[_], hashingVectorizer: HashingTF): Dataset[_] = {
+    val tfData = hashingVectorizer.transform(tokenizedData)
 
     val idf = new IDF()
       .setInputCol("rawFeatures")
       .setOutputCol("features")
-    val idfModel = idf.fit(featurizedData)
-    idfModel.transform(featurizedData)
+    val idfModel = idf.fit(tfData)
+    idfModel.transform(tfData)
   }
 
   def logActivityTime(activity: String, startTime: Long): Unit =

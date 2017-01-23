@@ -39,7 +39,7 @@ object ReviewTokenizer {
         new ShingleFilter(
             new EnglishMinimalStemFilter(
             new EnglishAnalyzer().tokenStream("contents", text)
-          ), 5)
+          ), 4)
 
     val term = analyzer.addAttribute(classOf[CharTermAttribute])
     analyzer.reset()
