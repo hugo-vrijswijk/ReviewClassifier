@@ -1,12 +1,13 @@
 import org.apache.spark.ml.classification.{NaiveBayes, NaiveBayesModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel}
-import org.apache.spark.sql._
+import org.apache.spark.sql.{Dataset, Row, SparkSession}
+
 import scala.io.StdIn
 
 
 /**
-  * Created by hugod on 21-Jan-17.
+  * Created by Hugo van Rijswijk
   */
 object NaiveBayesReviewer extends App {
   val spark = SparkSession
@@ -15,27 +16,18 @@ object NaiveBayesReviewer extends App {
     .master("local[4]")
     .getOrCreate()
   spark.sparkContext.setLogLevel("WARN")
-
+  System.setProperty("hadoop.home.dir", "C:/Program Files (x86)/Hadoop")
   import spark.implicits._
-
-  val rows = spark.read.format("com.databricks.spark.csv")
-    .option("delimiter", "\t")
-    .option("quote", "\"")
-    .option("header", true)
-    .load("C:/Users/hugod/OneDrive/School/Jaar 3/Data Analysis and Data Mining/datasets/Kaggle/labeledTrainData.tsv")
 
   val beforeLearning = System.currentTimeMillis()
   val bayesAndVectorizerModel = createNaiveBayesModel()
-  println("\n\nLearning took: " + (System.currentTimeMillis() - beforeLearning) + "ms\n")
-  val beforeAccuracyTest = System.currentTimeMillis()
+  logActivityTime("\nTotal of learning", beforeLearning)
 
   testAccuracy(bayesAndVectorizerModel)
-  println("Accuracy test took: " + (System.currentTimeMillis() - beforeAccuracyTest) + "ms\n")
-
   console(bayesAndVectorizerModel)
 
   def console(naiveBayes: BayesAndVectorizerModel): Unit = {
-    println("Enter 'q' to quit\n" + "Type a review, or CSV::filepath to read a CSV and classify the reviews in it\n")
+    println("\n\nEnter 'q' to quit\n" + "Type a review, or CSV::filepath to read a CSV and classify the reviews in it\n")
 
     while ( {
       StdIn.readLine("Input> ") match {
@@ -61,15 +53,15 @@ object NaiveBayesReviewer extends App {
   def vectorizeReview(bayesAndVectorizerModel: BayesAndVectorizerModel, review: Seq[String]): Double = {
     val dataset = spark.createDataset(Seq(review))
 
-
     val transformedDf = bayesAndVectorizerModel.vectorModel.setInputCol("value").transform(dataset)
-    //    val vector = Vectors.fromML(transformedDf.head().getAs[org.apache.spark.ml.linalg.Vector]("features"))
-    //
+
     val newVector = bayesAndVectorizerModel.model.setFeaturesCol("features").setPredictionCol("predictionCol").transform(transformedDf)
     newVector.head().getAs[Double]("predictionCol")
   }
 
   def testAccuracy(bayesAndVectorizerModel: BayesAndVectorizerModel): Unit = {
+    val beforeAccuracyTest = System.currentTimeMillis()
+    println("\nTesting accuracy...")
     val testData = bayesAndVectorizerModel.testData
     val countVectorizerModel = bayesAndVectorizerModel.vectorModel
 
@@ -91,41 +83,38 @@ object NaiveBayesReviewer extends App {
       .setMetricName("accuracy")
 
     val accuracy = evaluator.evaluate(predictedDataset) * 100
-    println("Test set accuracy: " + Math.round(accuracy) + "%")
 
-    //
-    //    val newTestData = testData.rdd.zipWithIndex().filter(_._2 < 1000)
-    //    val size = newTestData.count()
-    //    //noinspection ComparingUnrelatedTypes
-    //    val predictedCorrect = newTestData.map(_._1).map(row => {
-    //      val id = row.getAs[String]("id")
-    //      val reviewText = ReviewTokenizer.tokenizeText(row.getAs[String]("review"))
-    //      val sentiment = ReviewTokenizer.extractSentiment(row)
-    //      val predictedSentiment = vectorizeReview(bayesAndVectorizerModel, reviewText)
-    //
-    //      ClassifiedReview(id, reviewText, sentiment, predictedSentiment)
-    //    })
-    //      .filter(review => review.actualSentiment != null && review.actualSentiment == review.predictedSentiment)
-    //      .count()
-    //
-    //    val newAccuracy = predictedCorrect.toDouble / size.toDouble
-    //    println("Accuracy: " + newAccuracy)
+    logActivityTime("Accuracy test", beforeAccuracyTest)
+    println("Test set accuracy: " + Math.round(accuracy) + "%")
   }
 
   def classifyCSV(naiveBayesAndDictionaries: BayesAndVectorizerModel, directory: String) = ???
 
   def createNaiveBayesModel(): BayesAndVectorizerModel = {
     // Read CSV
+    val beforeReadingCsv = System.currentTimeMillis()
+    println("\nReading CSV...")
     val rows = spark.read.format("com.databricks.spark.csv")
       .option("delimiter", "\t")
       .option("quote", "\"")
-      .option("header", true)
-      .load("C:/Users/hugod/OneDrive/School/Jaar 3/Data Analysis and Data Mining/datasets/Kaggle/labeledTrainData.tsv")
+      .option("header", value = true)
+      .load("src/main/resources/labeledTrainData.tsv")
 
+    logActivityTime("Reading CSV", beforeReadingCsv)
+
+    // Split into training data and test data
     val Array(trainData, testData) = rows.randomSplit(Array(0.75, 0.25))
 
-    // Tokenize all reviews and neatly wrap them in a Review object
+    println("\nTokenizing reviews...")
+    val beforeTokenizing = System.currentTimeMillis()
+
+    // Tokenize all reviews and wrap them in a Review object
     val tokenizedReviews = ReviewTokenizer.parseAll(trainData)
+
+    logActivityTime("Tokenizing reviews", beforeTokenizing)
+
+    println("\nVectorizing reviews...")
+    val beforeVectorizing = System.currentTimeMillis()
 
     val countVectorizer = new CountVectorizer()
       .setBinary(true)
@@ -136,14 +125,24 @@ object NaiveBayesReviewer extends App {
       .fit(tokenizedReviews)
 
     val countVectorModel = countVectorizer.transform(tokenizedReviews)
+    logActivityTime("Vectorizing reviews", beforeVectorizing)
+
     val vectorizedData = countVectorModel.select("id", "sentiment", "features")
+
+    println("\nTraining model...")
+    val beforeTrainingModel = System.currentTimeMillis()
 
     val naiveBayesModel = new NaiveBayes()
       .setModelType("bernoulli")
       .fit(vectorizedData.select("sentiment", "features").withColumnRenamed("sentiment", "label"))
 
+    logActivityTime("Training model", beforeTrainingModel)
+
     BayesAndVectorizerModel(naiveBayesModel, countVectorizer, testData)
   }
+
+  def logActivityTime(activity: String, startTime: Long): Unit =
+    println(activity + s" took: ${System.currentTimeMillis() - startTime} ms")
 }
 
 case class BayesAndVectorizerModel(model: NaiveBayesModel, vectorModel: CountVectorizerModel, testData: Dataset[Row])
