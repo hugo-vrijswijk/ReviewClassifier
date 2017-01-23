@@ -12,7 +12,7 @@ libraryDependencies ++= Seq(
   "org.apache.lucene" % "lucene-core" % "6.4.+",
   "org.apache.lucene" % "lucene-analyzers-common" % "6.4.+",
   // Spark uses this library
-  "com.github.fommil.netlib" % "all" % "1.1"
+  "com.github.fommil.netlib" % "all" % "1.1.2"
 )
 
 resolvers ++= Seq(

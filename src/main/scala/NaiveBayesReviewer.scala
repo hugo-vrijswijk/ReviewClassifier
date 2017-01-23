@@ -1,6 +1,6 @@
 import org.apache.spark.ml.classification.{NaiveBayes, NaiveBayesModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, IDF}
+import org.apache.spark.ml.feature._
 import org.apache.spark.sql.{Dataset, Row, SparkSession}
 
 import scala.io.StdIn
@@ -54,9 +54,9 @@ object NaiveBayesReviewer extends App {
   def vectorizeReview(bayesAndVectorizerModel: BayesAndVectorizerModel, review: Seq[String]): Double = {
     val dataset = spark.createDataset(Seq(review))
 
-    val transformedDf = bayesAndVectorizerModel.vectorModel.setInputCol("value").transform(dataset)
+    val transformedDf = bayesAndVectorizerModel.hashingTF.setInputCol("value").transform(dataset)
 
-    val newVector = bayesAndVectorizerModel.model.setFeaturesCol("features").setPredictionCol("predictionCol").transform(transformedDf)
+    val newVector = bayesAndVectorizerModel.bayesModel.setFeaturesCol("features").setPredictionCol("predictionCol").transform(transformedDf)
     newVector.head().getAs[Double]("predictionCol")
   }
 
@@ -64,19 +64,17 @@ object NaiveBayesReviewer extends App {
     val beforeAccuracyTest = System.currentTimeMillis()
     println("\nTesting accuracy...")
     val testData = bayesAndVectorizerModel.testData
-    val countVectorizerModel = bayesAndVectorizerModel.vectorModel
-
+    val bayesModel = bayesAndVectorizerModel.bayesModel
+    val hashingTF = bayesAndVectorizerModel.hashingTF
     val tokenizedReviews = ReviewTokenizer.parseAll(testData)
-    val vectorizedDataset = countVectorizerModel
-      .setInputCol("words")
-      .setOutputCol("features")
-      .transform(tokenizedReviews)
 
-    val predictedDataset = bayesAndVectorizerModel.model
+    val vectorizedData = idfDataset(tokenizedReviews, hashingTF)
+
+    val predictedDataset = bayesModel
       .setFeaturesCol("features")
       .setPredictionCol("predictedSentiment")
       .setRawPredictionCol("confidence")
-      .transform(vectorizedDataset)
+      .transform(vectorizedData)
 
     val evaluator = new MulticlassClassificationEvaluator()
       .setLabelCol("sentiment")
@@ -86,7 +84,7 @@ object NaiveBayesReviewer extends App {
     val accuracy = evaluator.evaluate(predictedDataset) * 100
 
     logActivityTime("Accuracy test", beforeAccuracyTest)
-    println("Test set accuracy: " + Math.round(accuracy) + "%")
+    println(s"Test set accuracy: $accuracy%")
   }
 
   def classifyCSV(naiveBayesAndDictionaries: BayesAndVectorizerModel, directory: String) = ???
@@ -95,7 +93,7 @@ object NaiveBayesReviewer extends App {
     // Read CSV
     val beforeReadingCsv = System.currentTimeMillis()
     println("\nReading CSV...")
-    val rows = spark.read.format("com.databricks.spark.csv")
+    val trainData = spark.read.format("com.databricks.spark.csv")
       .option("delimiter", "\t")
       .option("quote", "\"")
       .option("header", value = true)
@@ -103,9 +101,13 @@ object NaiveBayesReviewer extends App {
 
     logActivityTime("Reading CSV", beforeReadingCsv)
 
-    // Split into training data and test data
-    val Array(trainData, testData) = rows.randomSplit(Array(0.75, 0.25))
+    val testData = spark.read.format("com.databricks.spark.csv")
+      .option("delimiter", "\t")
+      .option("quote", "\"")
+      .option("header", value = true)
+      .load("src/main/resources/labeledTestData.tsv")
 
+    // Split into training data and test data
     println("\nTokenizing reviews...")
     val beforeTokenizing = System.currentTimeMillis()
 
@@ -117,41 +119,38 @@ object NaiveBayesReviewer extends App {
     println("\nVectorizing reviews...")
     val beforeVectorizing = System.currentTimeMillis()
 
-    val countVectorizer = new CountVectorizer()
-      .setBinary(true)
-      .setInputCol("words")
+    val hashingTF = new HashingTF()
+      .setInputCol("words").setBinary(true)
       .setOutputCol("rawFeatures")
-      .setMinTF(2)
-      .setMinDF(2)
-      .fit(tokenizedReviews)
 
-    val countVectorModel = countVectorizer.transform(tokenizedReviews)
-
-    val idf = new IDF()
-      .setInputCol("rawFeatures")
-      .setOutputCol("features").setMinDocFreq(2)
-      .fit(countVectorModel)
-
-    val idfModel = idf.transform(countVectorModel)
+    val vectorizedData = idfDataset(tokenizedReviews, hashingTF)
 
     logActivityTime("Vectorizing reviews", beforeVectorizing)
-    val vectorizedData = idfModel.select("id", "sentiment", "features")
 
     println("\nTraining model...")
     val beforeTrainingModel = System.currentTimeMillis()
 
     val naiveBayesModel = new NaiveBayes()
-      .setModelType("bernoulli")
-      .setSmoothing(0.85)
+      .setSmoothing(0.9)
       .fit(vectorizedData.select("sentiment", "features").withColumnRenamed("sentiment", "label"))
 
     logActivityTime("Training model", beforeTrainingModel)
 
-    BayesAndVectorizerModel(naiveBayesModel, countVectorizer, testData)
+    BayesAndVectorizerModel(naiveBayesModel, hashingTF, testData)
+  }
+
+  def idfDataset(vectorizedData: Dataset[Review], hashingVectorizer: HashingTF): Dataset[_] = {
+    val featurizedData = hashingVectorizer.transform(vectorizedData)
+
+    val idf = new IDF()
+      .setInputCol("rawFeatures")
+      .setOutputCol("features")
+    val idfModel = idf.fit(featurizedData)
+    idfModel.transform(featurizedData)
   }
 
   def logActivityTime(activity: String, startTime: Long): Unit =
     println(activity + s" took: ${System.currentTimeMillis() - startTime} ms")
 }
 
-case class BayesAndVectorizerModel(model: NaiveBayesModel, vectorModel: CountVectorizerModel, testData: Dataset[Row])
+case class BayesAndVectorizerModel(bayesModel: NaiveBayesModel, hashingTF: HashingTF, testData: Dataset[Row])
