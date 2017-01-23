@@ -1,6 +1,6 @@
 import org.apache.spark.ml.classification.{NaiveBayes, NaiveBayesModel}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel}
+import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, IDF}
 import org.apache.spark.sql.{Dataset, Row, SparkSession}
 
 import scala.io.StdIn
@@ -17,6 +17,7 @@ object NaiveBayesReviewer extends App {
     .getOrCreate()
   spark.sparkContext.setLogLevel("WARN")
   System.setProperty("hadoop.home.dir", "C:/Program Files (x86)/Hadoop")
+
   import spark.implicits._
 
   val beforeLearning = System.currentTimeMillis()
@@ -119,21 +120,29 @@ object NaiveBayesReviewer extends App {
     val countVectorizer = new CountVectorizer()
       .setBinary(true)
       .setInputCol("words")
-      .setOutputCol("features")
+      .setOutputCol("rawFeatures")
       .setMinTF(2)
       .setMinDF(2)
       .fit(tokenizedReviews)
 
     val countVectorModel = countVectorizer.transform(tokenizedReviews)
-    logActivityTime("Vectorizing reviews", beforeVectorizing)
 
-    val vectorizedData = countVectorModel.select("id", "sentiment", "features")
+    val idf = new IDF()
+      .setInputCol("rawFeatures")
+      .setOutputCol("features").setMinDocFreq(2)
+      .fit(countVectorModel)
+
+    val idfModel = idf.transform(countVectorModel)
+
+    logActivityTime("Vectorizing reviews", beforeVectorizing)
+    val vectorizedData = idfModel.select("id", "sentiment", "features")
 
     println("\nTraining model...")
     val beforeTrainingModel = System.currentTimeMillis()
 
     val naiveBayesModel = new NaiveBayes()
       .setModelType("bernoulli")
+      .setSmoothing(0.85)
       .fit(vectorizedData.select("sentiment", "features").withColumnRenamed("sentiment", "label"))
 
     logActivityTime("Training model", beforeTrainingModel)
