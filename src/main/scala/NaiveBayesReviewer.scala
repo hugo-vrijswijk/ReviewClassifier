@@ -16,7 +16,7 @@ object NaiveBayesReviewer extends App {
     .appName("Classifier")
     .master("local[4]")
     .getOrCreate()
-  spark.sparkContext.setLogLevel("WARN")
+  spark.sparkContext.setLogLevel("ERROR")
   System.setProperty("hadoop.home.dir", "C:/Program Files (x86)/Hadoop")
 
   import spark.implicits._
@@ -134,7 +134,7 @@ object NaiveBayesReviewer extends App {
     val cvModel = new CountVectorizer()
       .setInputCol("words")
       .setOutputCol("rawFeatures")
-      
+
       .fit(tokenizedReviews)
     val tfData = cvModel.transform(tokenizedReviews)
     logActivityTime("\nCalculating term-frequency", beforeCv)
