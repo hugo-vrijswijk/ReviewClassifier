@@ -3,7 +3,7 @@ import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.ml.feature._
 import org.apache.spark.sql.{Dataset, Row, SparkSession}
 
-import scala.io.{Source, StdIn}
+import scala.io.StdIn
 import scala.util.Try
 
 
@@ -25,8 +25,7 @@ object NaiveBayesReviewer extends App {
   val bayesAndVectorizerModel = createNaiveBayesModel()
   logActivityTime("\nTotal of learning", beforeLearning)
 
-  //  testAccuracy(bayesAndVectorizerModel, bayesAndVectorizerModel.testData)
-  classifyCSV(bayesAndVectorizerModel, "src/main/resources/unlabeledTestData.tsv")
+  testAccuracy(bayesAndVectorizerModel, bayesAndVectorizerModel.testData)
   console(bayesAndVectorizerModel)
 
   def console(naiveBayes: BayesAndVectorizerModel): Unit = {
@@ -69,14 +68,7 @@ object NaiveBayesReviewer extends App {
       println("File has sentiment. Testing accuracy of Naive Bayes model on file")
       testAccuracy(bayesAndVectorizerModel, rows)
     } else {
-      print("Classifying reviews and writing to new file...")
-      val tokenizedReviews = ReviewTokenizer.parseAllNonClassifiedWithId(rows)
-
-      val classifiedReviews = predictReviews(bayesAndVectorizerModel, tokenizedReviews)
-        .select("id", "predictedSentiment", "review").map(_.mkString("\t")).coalesce(1)
-
-      Try(writeFile("classifiedReview", classifiedReviews)).getOrElse(println("Writing CSV failed. Make sure folder does not exist"))
-      println(s"\nWrote new file to classifiedReviews/...")
+      print("File has no sentiment and cannot be classified")
     }
   }
 
@@ -101,7 +93,7 @@ object NaiveBayesReviewer extends App {
     val rocAccuracy = Math.round(rocEvaluator.evaluate(predictedDataset) * 100)
 
     logActivityTime("Accuracy test", beforeAccuracyTest)
-    println(s"Test set accuracy (are under PR): $prAccuracy%")
+    println(s"Test set accuracy (area under PR): $prAccuracy%")
     println(s"Test set accuracy (area under ROC): $rocAccuracy%")
   }
 
@@ -142,6 +134,7 @@ object NaiveBayesReviewer extends App {
     val cvModel = new CountVectorizer()
       .setInputCol("words")
       .setOutputCol("rawFeatures")
+      
       .fit(tokenizedReviews)
     val tfData = cvModel.transform(tokenizedReviews)
     logActivityTime("\nCalculating term-frequency", beforeCv)
