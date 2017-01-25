@@ -39,7 +39,6 @@ object ReviewTokenizer {
   }
 
   def tokenizeText(text: String): Seq[String] = {
-
     val analyzer =
       new ShingleFilter(
         new EnglishMinimalStemFilter(
@@ -59,6 +58,9 @@ object ReviewTokenizer {
     tokenizedText
   }
 }
+
 case class NonClassifiedReview(words: Seq[String])
+
 case class NonClassifiedReviewWithID(id: String, review: String, words: Seq[String])
+
 case class Review(id: String, words: Seq[String], sentiment: Double)

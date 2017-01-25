@@ -6,7 +6,6 @@ import org.apache.spark.sql.{Dataset, Row, SparkSession}
 import scala.io.StdIn
 import scala.util.Try
 
-
 /**
   * Created by Hugo van Rijswijk
   */
@@ -134,20 +133,19 @@ object NaiveBayesReviewer extends App {
     val cvModel = new CountVectorizer()
       .setInputCol("words")
       .setOutputCol("rawFeatures")
-
       .fit(tokenizedReviews)
     val tfData = cvModel.transform(tokenizedReviews)
-    logActivityTime("\nCalculating term-frequency", beforeCv)
+    logActivityTime("Calculating term-frequency", beforeCv)
 
     val beforeIdf = System.currentTimeMillis()
-    println("Calculating IDF...")
+    println("\nCalculating IDF...")
     val idfModel = new IDF()
       .setInputCol("rawFeatures")
       .setOutputCol("features")
       .fit(tfData)
     val vectorizedData = idfModel.transform(tfData)
 
-    logActivityTime("\nCalculating inverse document frequency", beforeIdf)
+    logActivityTime("Calculating inverse document frequency", beforeIdf)
 
     println("\nTraining model...")
     val beforeTrainingModel = System.currentTimeMillis()
