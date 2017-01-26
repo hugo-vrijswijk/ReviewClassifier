@@ -132,6 +132,7 @@ object NaiveBayesReviewer extends App {
 
     val cvModel = new CountVectorizer()
       .setInputCol("words")
+      .setBinary(true)
       .setOutputCol("rawFeatures")
       .fit(tokenizedReviews)
     val tfData = cvModel.transform(tokenizedReviews)
@@ -151,8 +152,9 @@ object NaiveBayesReviewer extends App {
     val beforeTrainingModel = System.currentTimeMillis()
 
     val naiveBayesModel = new NaiveBayes()
-      .setSmoothing(0.85)
-      .fit(vectorizedData.select("sentiment", "features").withColumnRenamed("sentiment", "label"))
+      .setSmoothing(0.84)
+      .fit(vectorizedData.select("sentiment", "features")
+        .withColumnRenamed("sentiment", "label"))
 
     logActivityTime("Training model", beforeTrainingModel)
 

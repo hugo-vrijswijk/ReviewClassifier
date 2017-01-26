@@ -9,7 +9,7 @@ import scala.collection.mutable
   * Tokenizes reviews (cuts it up) and wraps it in a Review object
   */
 object ReviewTokenizer {
-  val spark = SparkSession
+  val spark: SparkSession = SparkSession
     .builder()
     .appName("Classifier")
     .master("local[4]")
